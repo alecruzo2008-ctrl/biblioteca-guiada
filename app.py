@@ -6,7 +6,21 @@ from openlibrary_service import buscar, consultar_isbn, OpenLibraryError
 app = Flask(__name__)
 app.config.from_object(Config)
 db.init_app(app)
- 
+
+@app.get("/biblioteca")
+def listar_biblioteca():
+    libros = LibroGuardado.query.order_by(LibroGuardado.id.desc()).all()
+    return jsonify([
+        {
+            "id": libro.id,
+            "titulo": libro.titulo,
+            "autor": libro.autor,
+            "isbn": libro.isbn,
+            "anio": libro.anio
+        }
+        for libro in libros
+    ]), 200
+
 @app.errorhandler(OpenLibraryError)
 def error_externo(error):
     return jsonify({"error": str(error)}), 502
@@ -89,6 +103,16 @@ def crear_libro():
     db.session.add(libro)
     db.session.commit()
     return jsonify({"mensaje": "Libro guardado", "id": libro.id}), 201
+
+@app.delete("/biblioteca/<int:id>")
+def eliminar_libro(id):
+    libro = db.session.get(LibroGuardado, id)
+    if libro is None:
+        return jsonify({"error": "Libro no encontrado"}), 404
+
+    db.session.delete(libro)
+    db.session.commit()
+    return jsonify({"mensaje": "Libro eliminado", "id": id}), 200
 
 if __name__ == "__main__":
     with app.app_context():
