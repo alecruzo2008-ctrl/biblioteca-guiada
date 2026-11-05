@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request
 from config import Config
-from models import db, Busqueda
+from models import db, Busqueda, LibroGuardado
 from openlibrary_service import buscar, consultar_isbn, OpenLibraryError
  
 app = Flask(__name__)
@@ -58,7 +58,38 @@ def historial():
     return jsonify([{"id": r.id, "criterio": r.criterio,
                      "termino": r.termino, "fecha": r.fecha.isoformat()}
                     for r in registros]), 200
+
+@app.post("/biblioteca")
+def crear_libro():
+    datos = request.get_json(silent=True)
+    if not isinstance(datos, dict):
+        return jsonify({"error": "Envía un objeto JSON válido"}), 400
  
+    titulo = datos.get("titulo")
+    autor = datos.get("autor")
+    isbn = datos.get("isbn")
+    anio = datos.get("anio")
+ 
+    if not all(isinstance(v, str) and v.strip()
+               for v in (titulo, autor, isbn)):
+        return jsonify({"error": "titulo, autor e isbn son obligatorios"}), 400
+ 
+    titulo, autor, isbn = titulo.strip(), autor.strip(), isbn.strip()
+    if len(titulo) > 250 or len(autor) > 200:
+        return jsonify({"error": "Título o autor demasiado largo"}), 400
+    if not (isbn.isdigit() and len(isbn) in (10, 13)):
+        return jsonify({"error": "ISBN debe tener 10 o 13 dígitos"}), 400
+    if anio is not None and (type(anio) is not int or not 0 < anio <= 2100):
+        return jsonify({"error": "anio debe ser un entero válido"}), 400
+ 
+    if LibroGuardado.query.filter_by(isbn=isbn).first():
+        return jsonify({"error": "El ISBN ya está guardado"}), 409
+ 
+    libro = LibroGuardado(titulo=titulo, autor=autor, isbn=isbn, anio=anio)
+    db.session.add(libro)
+    db.session.commit()
+    return jsonify({"mensaje": "Libro guardado", "id": libro.id}), 201
+
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
